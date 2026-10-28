@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Lift Tracker</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -21,8 +21,12 @@ h1{font-size:22px;margin:0 0 12px}h2{font-size:16px;margin:0 0 8px}
 nav{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:center;gap:6px;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--bd)}nav button{max-width:180px}
 nav button{flex:1;padding:9px 12px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font:inherit;cursor:pointer;white-space:nowrap}
 nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.seg{display:flex;gap:4px;padding:4px;margin-bottom:12px;background:var(--card);border:1px solid var(--bd);border-radius:10px}
+.seg button{flex:1;padding:7px 10px;border:0;background:transparent;color:var(--mu);border-radius:7px;font:inherit;cursor:pointer}
+.seg button.on{background:var(--ac2);color:var(--ac);font-weight:600}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
-input,select{font:inherit;font-size:16px;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:7px 9px;min-width:0}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+input,select,textarea{font:inherit;font-size:16px!important;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:7px 9px;min-width:0}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>input.g{flex:1}
 .btn{padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
 .btn.p{background:var(--ac);color:#fff;border-color:var(--ac)}.btn.s{padding:4px 9px;font-size:13px}
@@ -43,7 +47,7 @@ svg{width:100%;height:auto;display:block}.hide{display:none}.chip{display:inline
 </main>
 <script>
 "use strict";
-var S={w:[],p:{},sp:[],bw:[],g:null,tpl:[]},tab="log",D={ex:[{n:"",s:[{w:"",r:""}]}],date:"",name:""},selEx="",cal=new Date(),selDay="",tmr=null;
+var S={w:[],p:{},sp:[],bw:[],g:null,tpl:[]},tab="lifts",sub={lifts:"log",plan:"cal",nutr:"wt"},D={ex:[{n:"",s:[{w:"",r:""}]}],date:"",name:""},selEx="",cal=new Date(),selDay="",tmr=null;
 var $=function(i){return document.getElementById(i)};
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function ymd(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
@@ -65,10 +69,14 @@ function wireBackup(){
   $("bf").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var j=JSON.parse(r.result);if(!j||!Array.isArray(j.w))throw 0;
     S.w=j.w;S.p=j.p||{};S.sp=j.sp||[];S.bw=j.bw||[];S.g=j.g||null;S.tpl=j.tpl||[];save();render();$("bm").textContent="Imported "+S.w.length+" workouts."}catch(e){$("bm").textContent="That file is not a valid Lift Tracker backup."}};r.readAsText(f)}}
 function render(){
-  var T=[["log","Log"],["prog","Progress"],["wt","Weight"],["cal","Calendar"],["split","Split"]];
+  var T=[["lifts","Lifts"],["plan","Planning"],["nutr","Nutrition"]],SUB={lifts:[["log","Log"],["prog","Progress"]],plan:[["cal","Calendar"],["split","Split"]],nutr:[["wt","Weight"],["kcal","Calorie Tracking"]]};
   $("nav").innerHTML=T.map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-t="'+t[0]+'">'+t[1]+"</button>"}).join("");
   [].forEach.call($("nav").children,function(b){b.onclick=function(){tab=b.dataset.t;render()}});
-  ({log:vLog,prog:vProg,wt:vWt,cal:vCal,split:vSplit})[tab]();if(tab==="log"){$("v").insertAdjacentHTML("beforeend",backupCard());wireBackup()}}
+  var s=sub[tab];({log:vLog,prog:vProg,wt:vWt,cal:vCal,split:vSplit,kcal:vKcal})[s]();
+  if(s==="log"){$("v").insertAdjacentHTML("beforeend",backupCard());wireBackup()}
+  $("v").insertAdjacentHTML("afterbegin",'<div class="seg">'+SUB[tab].map(function(x){return'<button class="'+(s==x[0]?"on":"")+'" data-st="'+x[0]+'">'+x[1]+"</button>"}).join("")+"</div>");
+  [].forEach.call($("v").querySelectorAll("[data-st]"),function(b){b.onclick=function(){sub[tab]=b.dataset.st;render()}})}
+function vKcal(){$("v").innerHTML='<div class="card mu">Calorie tracking is coming soon.</div>'}
 /* LOG */
 function vLog(){
   var h='<div class="card"><div class="row"><input type="date" id="dt" value="'+D.date+'"><input class="g" id="nm" placeholder="Workout name (e.g. Push day)" value="'+esc(D.name)+'"></div></div>';
@@ -174,7 +182,7 @@ function vCal(){
 function mgr(){var n=Object.keys(S.p).length;if(!n&&!S.sp.length)return"";var h='<div class="card" style="margin-top:12px"><h2>Clear planned items</h2>';S.sp.forEach(function(s){var c=Object.keys(s.items).filter(function(k){return S.p[k]===s.items[k]}).length;h+='<div class="row" style="margin-bottom:6px"><span class="mu" style="flex:1">'+esc(s.name)+' · '+c+' days</span><button class="btn s" data-cs="'+s.id+'">Clear</button></div>'});h+='<div class="row"><button class="btn s" id="ca">Clear all planned items ('+n+')</button></div><p class="mu">Logged workouts are never removed. A split added before this update can be removed with “Clear all.”</p></div>';return h}
 function wireMgr(){[].forEach.call($("v").querySelectorAll("[data-cs]"),function(b){b.onclick=function(){var s=S.sp.filter(function(x){return x.id==b.dataset.cs})[0];if(!s)return;Object.keys(s.items).forEach(function(k){if(S.p[k]===s.items[k])delete S.p[k]});S.sp=S.sp.filter(function(x){return x!==s});save();render()}});var a=$("ca");if(a)a.onclick=function(){if(a.dataset.c!=="1"){a.dataset.c="1";a.textContent="Tap again to confirm (logged workouts stay)";return}S.p={};S.sp=[];save();render()}}
 function cust(){var D7=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],o=[1,2,3,4,5,6,0];var h='<div class="card"><h2>Build your own</h2><p class="mu">Type a label for each day you train (e.g. Upper, Lower) and leave rest days blank. The pattern repeats every week.</p>';o.forEach(function(d){h+='<div class="set"><span style="width:38px">'+D7[d]+'</span><input style="width:auto;flex:1" data-cd="'+d+'" placeholder="Rest"></div>'});h+='<div class="row" style="margin-top:8px"><label>Weeks <select id="cw">'+[1,2,3,4,6,8,12].map(function(n){return'<option'+(n==4?" selected":"")+'>'+n+'</option>'}).join("")+'</select></label><label>Start <input type="date" id="cs" value="'+ymd(new Date())+'"></label></div><div class="row" style="margin-top:8px"><input class="g" id="cn" placeholder="Name (e.g. Upper/Lower)"><button class="btn p" id="cb">Add to calendar</button></div><p class="mu" id="cm"></p></div>';return h}
-function wireCust(){var b=$("cb");if(!b)return;b.onclick=function(){var pat={},any=false;[].forEach.call($("v").querySelectorAll("[data-cd]"),function(el){var v=el.value.trim();if(v){pat[el.dataset.cd]=v;any=true}});if(!any){$("cm").textContent="Enter a label for at least one day.";return}var wk=+$("cw").value,st=$("cs").value;if(!st){$("cm").textContent="Pick a start date.";return}var p=st.split("-"),t=new Date(+p[0],+p[1]-1,+p[2]),it={};for(var i=0;i<wk*7;i++){var c=new Date(t);c.setDate(t.getDate()+i);var lb=pat[c.getDay()];if(lb){var k=ymd(c);S.p[k]=lb;it[k]=lb}}S.sp.push({id:Date.now(),name:($("cn").value.trim()||"Custom split")+" · started "+st,items:it});save();tab="cal";cal=new Date(t);render()}}
+function wireCust(){var b=$("cb");if(!b)return;b.onclick=function(){var pat={},any=false;[].forEach.call($("v").querySelectorAll("[data-cd]"),function(el){var v=el.value.trim();if(v){pat[el.dataset.cd]=v;any=true}});if(!any){$("cm").textContent="Enter a label for at least one day.";return}var wk=+$("cw").value,st=$("cs").value;if(!st){$("cm").textContent="Pick a start date.";return}var p=st.split("-"),t=new Date(+p[0],+p[1]-1,+p[2]),it={};for(var i=0;i<wk*7;i++){var c=new Date(t);c.setDate(t.getDate()+i);var lb=pat[c.getDay()];if(lb){var k=ymd(c);S.p[k]=lb;it[k]=lb}}S.sp.push({id:Date.now(),name:($("cn").value.trim()||"Custom split")+" · started "+st,items:it});save();tab="plan";sub.plan="cal";cal=new Date(t);render()}}
 /* WEIGHT */
 function dt(s){return new Date(s+"T00:00:00")}
 function f1(n){return (Math.round(n*10)/10).toFixed(1)}
@@ -224,6 +232,6 @@ function vSplit(){
     $("ap").onclick=function(){var t=new Date();t.setHours(0,0,0,0);var it={};
       for(var i=0;i<28;i++){var c=new Date(t);c.setDate(t.getDate()+i);var ix=plan.wd.indexOf(c.getDay());
         if(ix>=0){var k=ymd(c),lb=plan.days[(Math.floor(i/7)*plan.wd.length+ix)%plan.days.length];S.p[k]=lb;it[k]=lb}}
-      S.sp.push({id:Date.now(),name:plan.nm+" · started "+ymd(t),items:it});save();tab="cal";cal=new Date();render()}}}
+      S.sp.push({id:Date.now(),name:plan.nm+" · started "+ymd(t),items:it});save();tab="plan";sub.plan="cal";cal=new Date();render()}}}
 init();
 </script></body></html>
