@@ -39,6 +39,7 @@ input,select,textarea{font:inherit;font-size:16px!important;color:var(--tx);back
 .plan{display:block;color:var(--ac);font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat{display:inline-block;margin:0 16px 6px 0}.stat b{display:block;font-size:20px}
 svg{width:100%;height:auto;display:block}.hide{display:none}.chip{display:inline-flex;gap:2px}
+.bar{height:8px;background:var(--bd);border-radius:4px;overflow:hidden;margin:4px 0 10px}.bar i{display:block;height:100%;background:var(--ac);border-radius:4px}.bar.ov i{background:#b91c1c}
 </style></head><body><main>
 <h1>Lift Tracker</h1>
 <nav id="nav"></nav>
@@ -47,7 +48,7 @@ svg{width:100%;height:auto;display:block}.hide{display:none}.chip{display:inline
 </main>
 <script>
 "use strict";
-var S={w:[],p:{},sp:[],bw:[],g:null,tpl:[]},tab="lifts",sub={lifts:"log",plan:"cal",nutr:"wt"},D={ex:[{n:"",s:[{w:"",r:""}]}],date:"",name:""},selEx="",cal=new Date(),selDay="",tmr=null;
+var S={w:[],p:{},sp:[],bw:[],g:null,tpl:[],f:[],kg:{}},tab="lifts",sub={lifts:"log",plan:"cal",nutr:"wt"},D={ex:[{n:"",s:[{w:"",r:""}]}],date:"",name:""},selEx="",cal=new Date(),selDay="",tmr=null;
 var $=function(i){return document.getElementById(i)};
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function ymd(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
@@ -56,7 +57,7 @@ function e1(w,r){return r<=1?w:w*(1+r/30)}
 function names(){var o={};S.w.forEach(function(x){x.ex.forEach(function(e){o[e.n]=1})});return Object.keys(o).sort()}
 /* persistence: browser storage only, with file backup */
 function init(){
-  try{var l=JSON.parse(localStorage.getItem("lt")||"null");if(l){S.w=l.w||[];S.p=l.p||{};S.sp=l.sp||[];S.bw=l.bw||[];S.g=l.g||null;S.tpl=l.tpl||[]}}catch(e){}
+  try{var l=JSON.parse(localStorage.getItem("lt")||"null");if(l){S.w=l.w||[];S.p=l.p||{};S.sp=l.sp||[];S.bw=l.bw||[];S.g=l.g||null;S.tpl=l.tpl||[];S.f=l.f||[];S.kg=l.kg||{}}}catch(e){}
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
   if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
   render()}
@@ -64,19 +65,73 @@ function save(){clearTimeout(tmr);tmr=setTimeout(function(){try{localStorage.set
 function backupCard(){return '<div class="card" style="margin-top:12px"><h2>Backup</h2><p class="mu">Your data lives only in this browser on this device. Export a backup file now and then, and use Import to restore it or move it to another device. Importing replaces what is currently saved here.</p><div class="row"><button class="btn" id="bx">Export backup</button><button class="btn" id="bi">Import backup</button><input type="file" id="bf" accept="application/json,.json" class="hide"></div><p class="mu" id="bm"></p></div>'}
 function wireBackup(){
   var x=$("bx");if(!x)return;
-  x.onclick=function(){var b=new Blob([JSON.stringify(S,null,1)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="lift-tracker-backup-"+ymd(new Date())+".json";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);$("bm").textContent="Backup exported ("+S.w.length+" workouts)."};
+  x.onclick=function(){var b=new Blob([JSON.stringify(S,null,1)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="lift-tracker-backup-"+ymd(new Date())+".json";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);$("bm").textContent="Backup exported ("+S.w.length+" workouts, "+S.f.length+" food entries)."};
   $("bi").onclick=function(){$("bf").click()};
   $("bf").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var j=JSON.parse(r.result);if(!j||!Array.isArray(j.w))throw 0;
-    S.w=j.w;S.p=j.p||{};S.sp=j.sp||[];S.bw=j.bw||[];S.g=j.g||null;S.tpl=j.tpl||[];save();render();$("bm").textContent="Imported "+S.w.length+" workouts."}catch(e){$("bm").textContent="That file is not a valid Lift Tracker backup."}};r.readAsText(f)}}
+    S.w=j.w;S.p=j.p||{};S.sp=j.sp||[];S.bw=j.bw||[];S.g=j.g||null;S.tpl=j.tpl||[];S.f=j.f||[];S.kg=j.kg||{};save();render();$("bm").textContent="Imported "+S.w.length+" workouts and "+S.f.length+" food entries."}catch(e){$("bm").textContent="That file is not a valid Lift Tracker backup."}};r.readAsText(f)}}
 function render(){
   var T=[["lifts","Lifts"],["plan","Planning"],["nutr","Nutrition"]],SUB={lifts:[["log","Log"],["prog","Progress"]],plan:[["cal","Calendar"],["split","Split"]],nutr:[["wt","Weight"],["kcal","Calorie Tracking"]]};
   $("nav").innerHTML=T.map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-t="'+t[0]+'">'+t[1]+"</button>"}).join("");
   [].forEach.call($("nav").children,function(b){b.onclick=function(){tab=b.dataset.t;render()}});
   var s=sub[tab];({log:vLog,prog:vProg,wt:vWt,cal:vCal,split:vSplit,kcal:vKcal})[s]();
-  if(s==="log"){$("v").insertAdjacentHTML("beforeend",backupCard());wireBackup()}
+  if(s==="log"||s==="kcal"){$("v").insertAdjacentHTML("beforeend",backupCard());wireBackup()}
   $("v").insertAdjacentHTML("afterbegin",'<div class="seg">'+SUB[tab].map(function(x){return'<button class="'+(s==x[0]?"on":"")+'" data-st="'+x[0]+'">'+x[1]+"</button>"}).join("")+"</div>");
   [].forEach.call($("v").querySelectorAll("[data-st]"),function(b){b.onclick=function(){sub[tab]=b.dataset.st;render()}})}
-function vKcal(){$("v").innerHTML='<div class="card mu">Calorie tracking is coming soon.</div>'}
+/* CALORIES */
+var fd=ymd(new Date()),krng=30;
+function shiftD(d,n){var t=dt(d);t.setDate(t.getDate()+n);return ymd(t)}
+function dayTot(d){var k=0,p=0,n=0;S.f.forEach(function(x){if(x.d===d){k+=x.k;p+=x.p||0;n++}});return{k:k,p:p,n:n}}
+function foods(){var m={};S.f.slice().sort(function(a,b){return a.id-b.id}).forEach(function(x){var key=x.n.toLowerCase(),o=m[key]||{c:0};m[key]={n:x.n,k:x.k,p:x.p||0,c:o.c+1,id:x.id}});
+  return Object.keys(m).map(function(k){return m[k]}).sort(function(a,b){return b.c-a.c||b.id-a.id}).slice(0,12)}
+function maint(){/* estimate from the last 28 days: average intake minus the energy implied by the weight trend (about 3,500 kcal per lb) */
+  var td=ymd(new Date()),st=shiftD(td,-27),days={};S.f.forEach(function(x){if(x.d>=st&&x.d<=td)days[x.d]=1});
+  var ds=Object.keys(days);if(ds.length<14)return{need:14-ds.length};
+  var ki=ds.reduce(function(s,d){return s+dayTot(d).k},0)/ds.length,a=[],b=[];
+  S.bw.forEach(function(x){if(x.d>=st&&x.d<=shiftD(st,6))a.push(x.w);else if(x.d>=shiftD(td,-6)&&x.d<=td)b.push(x.w)});
+  if(!a.length||!b.length)return{nowt:1};
+  var av=function(r){return r.reduce(function(s,v){return s+v},0)/r.length},perDay=(av(b)-av(a))/21;
+  return{v:ki-perDay*3500,ki:ki,wk:perDay*7}}
+function vKcal(){
+  var td=ymd(new Date()),t=dayTot(fd),G=S.kg.k||0,PG=S.kg.p||0,es=S.f.filter(function(x){return x.d===fd}).sort(function(a,b){return a.id-b.id}),fs=foods();
+  var h='<div class="card"><div class="row" style="justify-content:space-between"><button class="btn s" id="kp" aria-label="Previous day">◀</button><input type="date" id="kd" value="'+fd+'"><button class="btn s" id="kn" aria-label="Next day">▶</button></div>'+(fd!==td?'<div class="row" style="justify-content:center;margin-top:6px"><button class="btn s" id="kt">Jump to today</button></div>':'')+'</div>';
+  h+='<div class="card"><div class="stat"><b>'+t.k.toLocaleString()+'</b><span class="mu">Calories eaten</span></div>';
+  if(G){var rem=G-t.k;h+='<div class="stat"><b>'+Math.abs(rem).toLocaleString()+'</b><span class="mu">'+(rem>=0?"Remaining":"Over goal")+'</span></div>'}
+  h+='<div class="stat"><b>'+Math.round(t.p)+' g</b><span class="mu">Protein'+(PG?" of "+PG+" g":"")+'</span></div>';
+  if(G)h+='<div class="mu">Calories · goal '+G.toLocaleString()+'</div><div class="bar'+(t.k>G?" ov":"")+'"><i style="width:'+Math.min(100,t.k/G*100)+'%"></i></div>';
+  if(PG)h+='<div class="mu">Protein · goal '+PG+' g</div><div class="bar"><i style="width:'+Math.min(100,t.p/PG*100)+'%"></i></div>';
+  if(!G&&!PG)h+='<p class="mu">Set a daily calorie or protein goal below to track what is left for the day.</p>';
+  h+='</div>';
+  h+='<div class="card"><h2>Add food</h2><div class="row"><input class="g" id="fn" list="fl" placeholder="Food (e.g. Chicken and rice)" autocomplete="off"></div><div class="row" style="margin-top:8px"><input type="number" inputmode="numeric" id="fk" placeholder="Calories" style="width:100px"><input type="number" inputmode="decimal" id="fp" placeholder="Protein g" style="width:100px"><button class="btn p" id="fa">Add</button></div><p class="mu" id="fm"></p>';
+  h+='<datalist id="fl">'+fs.map(function(f){return'<option value="'+esc(f.n)+'">'}).join("")+'</datalist>';
+  if(fs.length)h+='<div class="mu">Tap to add again</div><div class="row" style="margin-top:6px">'+fs.map(function(f,i){return'<button class="btn s" data-fq="'+i+'">+ '+esc(f.n)+' · '+f.k+'</button>'}).join("")+'</div>';
+  h+='</div>';
+  h+='<h2>'+(fd===td?"Today":fd)+'</h2>';
+  if(!es.length)h+='<p class="mu">Nothing logged for this day yet.</p>';
+  es.forEach(function(x){h+='<div class="card"><div class="row"><b style="flex:1">'+esc(x.n)+'</b><span>'+x.k.toLocaleString()+' kcal'+(x.p?' · '+Math.round(x.p)+' g':'')+'</span><button class="btn s" data-fx="'+x.id+'" aria-label="Delete entry">✕</button></div></div>'});
+  h+='<div class="card"><h2>Daily goals</h2><div class="row"><label>Calories <input type="number" inputmode="numeric" id="gk" style="width:90px" value="'+(G||"")+'"></label><label>Protein g <input type="number" inputmode="numeric" id="gp" style="width:80px" value="'+(PG||"")+'"></label><button class="btn s" id="gss">Set goals</button></div></div>';
+  /* trend */
+  var cut=krng?ymd(new Date(Date.now()-(krng-1)*864e5)):"",byD={};S.f.forEach(function(x){if(x.d>=cut)byD[x.d]=(byD[x.d]||0)+x.k});
+  var pts=Object.keys(byD).sort().map(function(d){return{t:dt(d).getTime(),y:byD[d]}}),w7=[];
+  for(var i=0;i<7;i++){var d7=shiftD(td,-i),s7=dayTot(d7);if(s7.n)w7.push(s7.k)}
+  var M=maint();
+  h+='<div class="card"><h2>Trend</h2><div class="stat"><b>'+(w7.length?Math.round(w7.reduce(function(s,v){return s+v},0)/w7.length).toLocaleString():"—")+'</b><span class="mu">7-day average'+(w7.length&&w7.length<7?" ("+w7.length+" days logged)":"")+'</span></div>';
+  h+='<div class="stat"><b>'+(M.v?(Math.round(M.v/10)*10).toLocaleString():"—")+'</b><span class="mu">Estimated maintenance</span></div>';
+  h+='<div class="row" style="margin:6px 0 8px">'+seg("kr",[[30,"30 days"],[90,"90 days"],[0,"All"]],krng)+'</div>';
+  if(pts.length<2)h+='<p class="mu">Log food on at least two days in this range to see the chart.</p>';
+  else h+=lc({s:[{p:pts,l:1,d:1}],g:G||null,f:function(n){return Math.round(n).toLocaleString()},a:ymd(new Date(pts[0].t)),b:ymd(new Date(pts[pts.length-1].t))})+'<p class="mu">Each point is one day\'s total. Days with nothing logged are skipped'+(G?"; the dashed line is your goal":"")+'.</p>';
+  h+='<p class="mu">'+(M.v?'Maintenance is estimated from your last 28 days: you averaged '+Math.round(M.ki).toLocaleString()+' kcal/day while your weight changed '+(M.wk>0?"+":"")+f1(M.wk)+' lbs/week. Treat it as a rough guide, since it depends on logging every day accurately.':M.need?'Estimated maintenance needs at least 14 days of food logged in the last 4 weeks ('+M.need+' more to go), plus weigh-ins on the Weight tab.':'Estimated maintenance also needs weigh-ins on the Weight tab near the start and end of the last 4 weeks.')+'</p></div>';
+  $("v").innerHTML=h;
+  var go=function(d){if(d){fd=d;render()}};
+  $("kp").onclick=function(){go(shiftD(fd,-1))};$("kn").onclick=function(){go(shiftD(fd,1))};$("kd").onchange=function(){go(this.value)};if($("kt"))$("kt").onclick=function(){go(td)};
+  $("fn").oninput=function(){var v=this.value.trim().toLowerCase(),m=fs.filter(function(f){return f.n.toLowerCase()===v})[0];if(m&&!$("fk").value){$("fk").value=m.k;if(m.p)$("fp").value=m.p}};
+  var add=function(){var n=$("fn").value.trim(),k=Math.round(parseFloat($("fk").value)),p=parseFloat($("fp").value);
+    if(!n||!(k>=0)){$("fm").textContent="Enter a food name and its calories.";return}
+    S.f.push({id:Date.now(),d:fd,n:n,k:k,p:p>0?Math.round(p*10)/10:0});save();render()};
+  $("fa").onclick=add;["fk","fp"].forEach(function(i){$(i).onkeydown=function(e){if(e.key==="Enter")add()}});
+  [].forEach.call($("v").querySelectorAll("[data-fq]"),function(b){b.onclick=function(){var f=fs[+b.dataset.fq];S.f.push({id:Date.now(),d:fd,n:f.n,k:f.k,p:f.p});save();render()}});
+  [].forEach.call($("v").querySelectorAll("[data-fx]"),function(b){b.onclick=function(){S.f=S.f.filter(function(x){return x.id!=b.dataset.fx});save();render()}});
+  [].forEach.call($("v").querySelectorAll("[data-kr]"),function(b){b.onclick=function(){krng=+b.dataset.kr;render()}});
+  $("gss").onclick=function(){var k=parseInt($("gk").value,10),p=parseInt($("gp").value,10);S.kg={k:k>0?k:0,p:p>0?p:0};save();render()}}
 /* LOG */
 function vLog(){
   var h='<div class="card"><div class="row"><input type="date" id="dt" value="'+D.date+'"><input class="g" id="nm" placeholder="Workout name (e.g. Push day)" value="'+esc(D.name)+'"></div></div>';
