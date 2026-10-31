@@ -78,7 +78,31 @@ function render(){
   $("v").insertAdjacentHTML("afterbegin",'<div class="seg">'+SUB[tab].map(function(x){return'<button class="'+(s==x[0]?"on":"")+'" data-st="'+x[0]+'">'+x[1]+"</button>"}).join("")+"</div>");
   [].forEach.call($("v").querySelectorAll("[data-st]"),function(b){b.onclick=function(){sub[tab]=b.dataset.st;render()}})}
 /* CALORIES */
-var fd=ymd(new Date()),krng=30;
+var fd=ymd(new Date()),krng=30,F={n:"",k:"",p:""},LK={st:"",r:[],m:"",sel:-1};
+/* nutrition lookup: USDA FoodData Central (values in search results are per 100 g) */
+function fdcKey(){try{return localStorage.getItem("lt_fdc")||""}catch(e){return""}}
+function nice(s){s=String(s||"");return s===s.toUpperCase()?s.charAt(0)+s.slice(1).toLowerCase():s}
+function parseFood(x){var kc=null,kr=9,pr=0;/* prefer listed kcal (1008, then Atwater 2047/2048) over converting kJ */
+  (x.foodNutrients||[]).forEach(function(q){var id=q.nutrientId,u=String(q.unitName||"").toUpperCase();if(q.value==null)return;
+    if(id===1003)pr=q.value;
+    if(id===1008||id===2047||id===2048){var rk=(u==="KJ"?3:0)+(id===1008?0:id===2047?1:2);if(rk<kr){kr=rk;kc=u==="KJ"?q.value/4.184:q.value}}});
+  if(kc===null)return null;
+  var sv=[],su=String(x.servingSizeUnit||"").toLowerCase();
+  if(x.servingSize>0&&/^(g|grm|ml|mlt)$/.test(su))sv.push({l:(x.householdServingFullText?nice(x.householdServingFullText)+" ":"serving ")+"("+Math.round(x.servingSize)+(su.charAt(0)==="m"?" ml":" g")+")",g:x.servingSize});
+  (x.foodMeasures||[]).forEach(function(m){if(m.gramWeight>0&&m.disseminationText&&!/not specified/i.test(m.disseminationText)&&sv.length<6)sv.push({l:m.disseminationText+" ("+Math.round(m.gramWeight)+" g)",g:m.gramWeight})});
+  return{n:nice(x.description),b:nice(x.brandName||x.brandOwner||""),br:x.dataType==="Branded",k:kc,p:pr,sv:sv}}
+function onKcal(){return tab==="nutr"&&sub.nutr==="kcal"}
+function lookup(){var q=F.n.trim();if(!q){LK={st:"done",r:[],m:"Type a food name first, then tap Look up.",sel:-1};render();return}
+  LK={st:"busy",r:[],m:"",sel:-1};render();
+  fetch("https://api.nal.usda.gov/fdc/v1/foods/search?api_key="+encodeURIComponent(fdcKey()||"DEMO_KEY")+"&query="+encodeURIComponent(q)+"&pageSize=30")
+  .then(function(r){if(r.status===429)throw"lim";if(r.status===403)throw"key";if(!r.ok)throw"err";return r.json()})
+  .then(function(j){var R=(j.foods||[]).map(parseFood).filter(Boolean);
+    LK={st:"done",r:R.filter(function(x){return!x.br}).slice(0,6).concat(R.filter(function(x){return x.br})).slice(0,12),m:"",sel:-1};
+    if(!LK.r.length)LK.m="No matches. Try fewer or different words.";if(onKcal())render()})
+  .catch(function(e){LK={st:"done",r:[],sel:-1,m:e==="lim"?(fdcKey()?"Your USDA key has hit its hourly limit. Try again in a bit.":"The shared lookup key has hit its limit (about 50 searches a day). Add your own free key under Food lookup settings below."):e==="key"?"The USDA key was rejected. Check it under Food lookup settings below.":navigator.onLine===false?"You're offline. Nutrition lookup needs a connection, but you can still enter numbers yourself.":"Couldn't reach the USDA food database. Try again in a moment."};if(onKcal())render()})}
+function lkUnits(r){return r.sv.map(function(s,i){return["s"+i,s.l]}).concat([["g","grams"],["oz","ounces"]])}
+function lkGrams(r,a,u){return u==="g"?a:u==="oz"?a*28.3495:a*r.sv[+u.slice(1)].g}
+function lkLabel(r,a,u){var A=Math.round(a*100)/100;return u==="g"?A+" g":u==="oz"?A+" oz":A+" × "+r.sv[+u.slice(1)].l}
 function shiftD(d,n){var t=dt(d);t.setDate(t.getDate()+n);return ymd(t)}
 function dayTot(d){var k=0,p=0,n=0;S.f.forEach(function(x){if(x.d===d){k+=x.k;p+=x.p||0;n++}});return{k:k,p:p,n:n}}
 function foods(){var m={};S.f.slice().sort(function(a,b){return a.id-b.id}).forEach(function(x){var key=x.n.toLowerCase(),o=m[key]||{c:0};m[key]={n:x.n,k:x.k,p:x.p||0,c:o.c+1,id:x.id}});
@@ -101,7 +125,12 @@ function vKcal(){
   if(PG)h+='<div class="mu">Protein · goal '+PG+' g</div><div class="bar"><i style="width:'+Math.min(100,t.p/PG*100)+'%"></i></div>';
   if(!G&&!PG)h+='<p class="mu">Set a daily calorie or protein goal below to track what is left for the day.</p>';
   h+='</div>';
-  h+='<div class="card"><h2>Add food</h2><div class="row"><input class="g" id="fn" list="fl" placeholder="Food (e.g. Chicken and rice)" autocomplete="off"></div><div class="row" style="margin-top:8px"><input type="number" inputmode="numeric" id="fk" placeholder="Calories" style="width:100px"><input type="number" inputmode="decimal" id="fp" placeholder="Protein g" style="width:100px"><button class="btn p" id="fa">Add</button></div><p class="mu" id="fm"></p>';
+  h+='<div class="card"><h2>Add food</h2><div class="row"><input class="g" id="fn" list="fl" placeholder="Food (e.g. Chicken breast)" autocomplete="off" enterkeyhint="search" value="'+esc(F.n)+'"><button class="btn" id="flk">'+(LK.st==="busy"?"Searching…":"Look up")+'</button></div><div class="row" style="margin-top:8px"><input type="number" inputmode="numeric" id="fk" placeholder="Calories" style="width:100px" value="'+esc(F.k)+'"><input type="number" inputmode="decimal" id="fp" placeholder="Protein g" style="width:100px" value="'+esc(F.p)+'"><button class="btn p" id="fa">Add</button></div><p class="mu" id="fm">'+esc(LK.m)+'</p>';
+  if(LK.r.length){h+='<div class="mu" style="margin-bottom:6px">Tap a match to choose how much you had</div>';
+    LK.r.forEach(function(r,i){var on=i===LK.sel;h+='<div class="card" style="padding:10px;margin-bottom:6px'+(on?';border-color:var(--ac)':'')+'"><button data-lr="'+i+'" style="all:unset;display:block;width:100%;cursor:pointer"><b>'+esc(r.n)+'</b>'+(r.b?' <span class="mu">· '+esc(r.b)+'</span>':'')+'<div class="mu">'+Math.round(r.k)+' kcal · '+(Math.round(r.p*10)/10)+' g protein per 100 g</div></button>';
+      if(on){var U=lkUnits(r);h+='<div class="row" style="margin-top:8px"><input type="number" inputmode="decimal" id="la" value="'+(r.sv.length?1:100)+'" style="width:80px"><select id="lu" style="flex:1">'+U.map(function(u){return'<option value="'+u[0]+'">'+esc(u[1])+'</option>'}).join("")+'</select></div><div class="row" style="margin-top:8px"><b id="lpv" style="flex:1"></b><button class="btn s" id="lx">Cancel</button><button class="btn p" id="ladd">Add to log</button></div>'}
+      h+='</div>'});
+    h+='<p class="mu">Nutrition data from USDA FoodData Central. Brand-name items are listed after basic foods.</p>'}
   h+='<datalist id="fl">'+fs.map(function(f){return'<option value="'+esc(f.n)+'">'}).join("")+'</datalist>';
   if(fs.length)h+='<div class="mu">Tap to add again</div><div class="row" style="margin-top:6px">'+fs.map(function(f,i){return'<button class="btn s" data-fq="'+i+'">+ '+esc(f.n)+' · '+f.k+'</button>'}).join("")+'</div>';
   h+='</div>';
@@ -109,6 +138,7 @@ function vKcal(){
   if(!es.length)h+='<p class="mu">Nothing logged for this day yet.</p>';
   es.forEach(function(x){h+='<div class="card"><div class="row"><b style="flex:1">'+esc(x.n)+'</b><span>'+x.k.toLocaleString()+' kcal'+(x.p?' · '+Math.round(x.p)+' g':'')+'</span><button class="btn s" data-fx="'+x.id+'" aria-label="Delete entry">✕</button></div></div>'});
   h+='<div class="card"><h2>Daily goals</h2><div class="row"><label>Calories <input type="number" inputmode="numeric" id="gk" style="width:90px" value="'+(G||"")+'"></label><label>Protein g <input type="number" inputmode="numeric" id="gp" style="width:80px" value="'+(PG||"")+'"></label><button class="btn s" id="gss">Set goals</button></div></div>';
+  h+='<details class="card"><summary class="mu" style="cursor:pointer">Food lookup settings</summary><p class="mu">Look up uses a shared USDA key that allows about 50 searches a day. For more, get a free personal key at <a href="https://api.data.gov/signup/" target="_blank" rel="noopener" style="color:var(--ac)">api.data.gov/signup</a> and paste it here. It stays on this device and is not included in backups.</p><div class="row"><input class="g" id="fkey" placeholder="Personal USDA key (optional)" autocomplete="off" value="'+esc(fdcKey())+'"><button class="btn s" id="fks">Save key</button></div><p class="mu" id="fkm"></p></details>';
   /* trend */
   var cut=krng?ymd(new Date(Date.now()-(krng-1)*864e5)):"",byD={};S.f.forEach(function(x){if(x.d>=cut)byD[x.d]=(byD[x.d]||0)+x.k});
   var pts=Object.keys(byD).sort().map(function(d){return{t:dt(d).getTime(),y:byD[d]}}),w7=[];
@@ -123,11 +153,22 @@ function vKcal(){
   $("v").innerHTML=h;
   var go=function(d){if(d){fd=d;render()}};
   $("kp").onclick=function(){go(shiftD(fd,-1))};$("kn").onclick=function(){go(shiftD(fd,1))};$("kd").onchange=function(){go(this.value)};if($("kt"))$("kt").onclick=function(){go(td)};
-  $("fn").oninput=function(){var v=this.value.trim().toLowerCase(),m=fs.filter(function(f){return f.n.toLowerCase()===v})[0];if(m&&!$("fk").value){$("fk").value=m.k;if(m.p)$("fp").value=m.p}};
+  $("fn").oninput=function(){F.n=this.value;var v=this.value.trim().toLowerCase(),m=fs.filter(function(f){return f.n.toLowerCase()===v})[0];if(m&&!$("fk").value){$("fk").value=F.k=m.k;if(m.p)$("fp").value=F.p=m.p}};
+  $("fk").oninput=function(){F.k=this.value};$("fp").oninput=function(){F.p=this.value};
+  $("fn").onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();this.blur();lookup()}};
+  $("flk").onclick=function(){if(LK.st!=="busy")lookup()};
   var add=function(){var n=$("fn").value.trim(),k=Math.round(parseFloat($("fk").value)),p=parseFloat($("fp").value);
-    if(!n||!(k>=0)){$("fm").textContent="Enter a food name and its calories.";return}
-    S.f.push({id:Date.now(),d:fd,n:n,k:k,p:p>0?Math.round(p*10)/10:0});save();render()};
+    if(!n||!(k>=0)){$("fm").textContent="Enter a food name and its calories, or tap Look up.";return}
+    S.f.push({id:Date.now(),d:fd,n:n,k:k,p:p>0?Math.round(p*10)/10:0});F={n:"",k:"",p:""};LK={st:"",r:[],m:"",sel:-1};save();render()};
   $("fa").onclick=add;["fk","fp"].forEach(function(i){$(i).onkeydown=function(e){if(e.key==="Enter")add()}});
+  [].forEach.call($("v").querySelectorAll("[data-lr]"),function(b){b.onclick=function(){var i=+b.dataset.lr;LK.sel=LK.sel===i?-1:i;render()}});
+  if(LK.sel>=0&&$("la")){var r=LK.r[LK.sel],calc=function(){var a=parseFloat($("la").value),g=a>0?lkGrams(r,a,$("lu").value):0;return{a:a,g:g,k:Math.round(r.k*g/100),p:Math.round(r.p*g/10)/10}},
+    pv=function(){var c=calc();$("lpv").textContent=c.g?c.k+" kcal · "+c.p+" g protein":"Enter an amount"};
+    $("la").oninput=pv;$("lu").onchange=function(){var u=this.value;$("la").value=u==="g"?100:u==="oz"?4:1;pv()};pv();
+    $("lx").onclick=function(){LK.sel=-1;render()};
+    $("ladd").onclick=function(){var c=calc();if(!c.g){$("lpv").textContent="Enter an amount";return}
+      S.f.push({id:Date.now(),d:fd,n:r.n+" · "+lkLabel(r,c.a,$("lu").value),k:c.k,p:c.p});F={n:"",k:"",p:""};LK={st:"",r:[],m:"",sel:-1};save();render()}}
+  $("fks").onclick=function(){var v=$("fkey").value.trim();try{if(v)localStorage.setItem("lt_fdc",v);else localStorage.removeItem("lt_fdc");$("fkm").textContent=v?"Key saved on this device.":"Key removed. Using the shared key."}catch(e){$("fkm").textContent="Could not save the key in this browser."}};
   [].forEach.call($("v").querySelectorAll("[data-fq]"),function(b){b.onclick=function(){var f=fs[+b.dataset.fq];S.f.push({id:Date.now(),d:fd,n:f.n,k:f.k,p:f.p});save();render()}});
   [].forEach.call($("v").querySelectorAll("[data-fx]"),function(b){b.onclick=function(){S.f=S.f.filter(function(x){return x.id!=b.dataset.fx});save();render()}});
   [].forEach.call($("v").querySelectorAll("[data-kr]"),function(b){b.onclick=function(){krng=+b.dataset.kr;render()}});
