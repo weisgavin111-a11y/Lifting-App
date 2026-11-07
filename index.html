@@ -45,10 +45,11 @@ svg{width:100%;height:auto;display:block}.hide{display:none}.chip{display:inline
 <nav id="nav"></nav>
 <div id="v"></div>
 <p class="mu" id="foot"></p>
+<p class="mu" style="text-align:center;opacity:.6">Version 9 · Sync &amp; autosave</p>
 </main>
 <script>
 "use strict";
-var S={w:[],p:{},sp:[],bw:[],g:null,tpl:[],f:[],kg:{}},tab="lifts",sub={lifts:"log",plan:"cal",nutr:"wt"},D={ex:[{n:"",s:[{w:"",r:""}]}],date:"",name:""},selEx="",cal=new Date(),selDay="",tmr=null;
+var S={w:[],p:{},sp:[],bw:[],g:null,tpl:[],f:[],kg:{},ts:0},tab="lifts",sub={lifts:"log",plan:"cal",nutr:"wt"},D={ex:[{n:"",s:[{w:"",r:""}]}],date:"",name:""},selEx="",cal=new Date(),selDay="",tmr=null;
 var $=function(i){return document.getElementById(i)};
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function ymd(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
@@ -57,12 +58,49 @@ function e1(w,r){return r<=1?w:w*(1+r/30)}
 function names(){var o={};S.w.forEach(function(x){x.ex.forEach(function(e){o[e.n]=1})});return Object.keys(o).sort()}
 /* persistence: browser storage only, with file backup */
 function init(){
-  try{var l=JSON.parse(localStorage.getItem("lt")||"null");if(l){S.w=l.w||[];S.p=l.p||{};S.sp=l.sp||[];S.bw=l.bw||[];S.g=l.g||null;S.tpl=l.tpl||[];S.f=l.f||[];S.kg=l.kg||{}}}catch(e){}
+  try{var l=JSON.parse(localStorage.getItem("lt")||"null");if(l){S.w=l.w||[];S.p=l.p||{};S.sp=l.sp||[];S.bw=l.bw||[];S.g=l.g||null;S.tpl=l.tpl||[];S.f=l.f||[];S.kg=l.kg||{};S.ts=+l.ts||0}}catch(e){}
+  try{var d=JSON.parse(localStorage.getItem("ltd")||"null");if(d&&Array.isArray(d.ex)&&d.ex.length){D={ex:d.ex.map(function(x){return{n:String(x.n||""),s:(Array.isArray(x.s)&&x.s.length?x.s:[{w:"",r:""}]).map(function(s){return{w:String(s.w==null?"":s.w),r:String(s.r==null?"":s.r)}})}}),date:String(d.date||""),name:String(d.name||"")}}}catch(e){}
+  document.addEventListener("input",saveDraft);document.addEventListener("change",saveDraft);
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden")flush()});window.addEventListener("pagehide",flush);
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
   if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
   render()}
-function save(){clearTimeout(tmr);tmr=setTimeout(function(){try{localStorage.setItem("lt",JSON.stringify(S))}catch(e){$("foot").textContent="Could not save. Browser storage may be full or blocked."}},300)}
-function backupCard(){return '<div class="card" style="margin-top:12px"><h2>Backup</h2><p class="mu">Your data lives only in this browser on this device. Export a backup file now and then, and use Import to restore it or move it to another device. Importing replaces what is currently saved here.</p><div class="row"><button class="btn" id="bx">Export backup</button><button class="btn" id="bi">Import backup</button><input type="file" id="bf" accept="application/json,.json" class="hide"></div><p class="mu" id="bm"></p></div>'}
+var pend=false;
+function saveDraft(){try{var blank=!D.name&&!D.ex.some(function(x){return x.n||x.s.some(function(s){return s.w||s.r})});if(blank)localStorage.removeItem("ltd");else localStorage.setItem("ltd",JSON.stringify(D))}catch(e){}}
+function flush(){if(pend){pend=false;clearTimeout(tmr);try{localStorage.setItem("lt",JSON.stringify(S))}catch(e){}}saveDraft()}
+function save(){S.ts=Date.now();pend=true;clearTimeout(tmr);tmr=setTimeout(function(){pend=false;try{localStorage.setItem("lt",JSON.stringify(S))}catch(e){$("foot").textContent="Could not save. Browser storage may be full or blocked."}if(window.LTS&&LTS.push)LTS.push()},300)}
+/* SYNC */
+var t0=Date.now();
+function mergeS(a,b){
+  var nb=(+b.ts||0)>(+a.ts||0),n=nb?b:a,o=nb?a:b;
+  function uni(x,y,key){var seen={},out=[];(x||[]).concat(y||[]).forEach(function(i){if(!i)return;var k=key(i);if(k==null){out.push(i);return}if(!seen[k]){seen[k]=1;out.push(i)}});return out}
+  var r={};
+  r.w=uni(n.w,o.w,function(i){return i.id}).sort(function(x,y){return (x.id||0)-(y.id||0)});
+  r.sp=uni(n.sp,o.sp,function(i){return i.id}).sort(function(x,y){return (x.id||0)-(y.id||0)});
+  r.tpl=uni(n.tpl,o.tpl,function(i){return String(i.name||"").toLowerCase()}).sort(function(x,y){return String(x.name).toLowerCase()<String(y.name).toLowerCase()?-1:1});
+  r.bw=uni(n.bw,o.bw,function(i){return i.d}).sort(function(x,y){return x.d<y.d?-1:1});
+  var pp={};Object.keys(o.p||{}).forEach(function(k){pp[k]=o.p[k]});Object.keys(n.p||{}).forEach(function(k){pp[k]=n.p[k]});r.p={};Object.keys(pp).sort().forEach(function(k){r.p[k]=pp[k]});
+  r.f=uni(n.f,o.f,function(i){return i.id}).sort(function(x,y){return (x.id||0)-(y.id||0)});
+  r.kg=Object.assign({},o.kg||{},n.kg||{});
+  r.g=(n.g>0?n.g:(o.g>0?o.g:null));
+  return r}
+window.LTS=window.LTS||{};
+window.LT={get:function(){return S},merge:mergeS,ui:function(){syncUI()},
+  apply:function(o,ts){S.w=o.w||[];S.p=o.p||{};S.sp=o.sp||[];S.bw=o.bw||[];S.g=o.g||null;S.tpl=o.tpl||[];S.f=o.f||[];S.kg=o.kg||{};S.ts=ts;pend=false;clearTimeout(tmr);try{localStorage.setItem("lt",JSON.stringify(S))}catch(e){}render()},
+  lk:function(uid){try{var k=JSON.parse(localStorage.getItem("ltsync")||"null");return k&&k.uid===uid?(+k.ts||0):-1}catch(e){return -1}},
+  mark:function(uid,ts){try{localStorage.setItem("ltsync",JSON.stringify({uid:uid,ts:ts}))}catch(e){}}};
+LTS.say=function(m){LTS.msg=m;var e=$("sy_m");if(e)e.textContent=m;else syncUI()};
+function syncUI(){var el=$("sy");if(!el)return;var L=window.LTS,h='<h2>Sync</h2>';
+  if(!L.ready){h+='<p class="mu">'+(Date.now()-t0>6000?"Sync isn’t available right now (are you offline?). Your data is still saved on this device.":"Loading sync…")+'</p>';if(Date.now()-t0<=6000)setTimeout(syncUI,6200)}
+  else if(L.user){h+='<p class="mu">Signed in as '+esc(L.user)+'. Your workouts, weigh-ins, templates and splits sync across devices you sign in on.</p><p class="mu" id="sy_m">'+esc(L.msg||"")+'</p><div class="row"><button class="btn" id="sy_out">Sign out</button></div>'}
+  else{h+='<p class="mu">Sign in to keep your data in sync across your devices. First time? Enter an email and a password (at least 6 characters), then tap Create account.</p><div class="row"><input class="g" type="email" id="sy_e" autocomplete="email" autocapitalize="none" placeholder="Email" value="'+esc(L.em||"")+'"></div><div class="row" style="margin-top:8px"><input class="g" type="password" id="sy_p" autocomplete="current-password" placeholder="Password"></div><div class="row" style="margin-top:8px"><button class="btn p" id="sy_in">Sign in</button><button class="btn" id="sy_up">Create account</button><button class="btn s" id="sy_fg">Forgot password</button></div><p class="mu" id="sy_m">'+esc(L.msg||"")+'</p>'}
+  el.innerHTML=h;
+  var g=function(i){return $(i)},em=function(){var e=g("sy_e");L.em=e?e.value:"";return L.em},pw=function(){var e=g("sy_p");return e?e.value:""};
+  if(g("sy_in"))g("sy_in").onclick=function(){L.signIn(em(),pw())};
+  if(g("sy_up"))g("sy_up").onclick=function(){L.signUp(em(),pw())};
+  if(g("sy_fg"))g("sy_fg").onclick=function(){L.reset(em())};
+  if(g("sy_out"))g("sy_out").onclick=function(){L.signOut()}}
+function backupCard(){return '<div class="card" style="margin-top:12px"><h2>Backup</h2><p class="mu">Signing in above keeps a copy online. A backup file is still a good safety net. Export one now and then, and use Import to restore it or move it to another device. Importing replaces what is currently saved here.</p><div class="row"><button class="btn" id="bx">Export backup</button><button class="btn" id="bi">Import backup</button><input type="file" id="bf" accept="application/json,.json" class="hide"></div><p class="mu" id="bm"></p></div>'}
 function wireBackup(){
   var x=$("bx");if(!x)return;
   x.onclick=function(){var b=new Blob([JSON.stringify(S,null,1)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="lift-tracker-backup-"+ymd(new Date())+".json";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);$("bm").textContent="Backup exported ("+S.w.length+" workouts, "+S.f.length+" food entries)."};
@@ -70,11 +108,12 @@ function wireBackup(){
   $("bf").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){try{var j=JSON.parse(r.result);if(!j||!Array.isArray(j.w))throw 0;
     S.w=j.w;S.p=j.p||{};S.sp=j.sp||[];S.bw=j.bw||[];S.g=j.g||null;S.tpl=j.tpl||[];S.f=j.f||[];S.kg=j.kg||{};save();render();$("bm").textContent="Imported "+S.w.length+" workouts and "+S.f.length+" food entries."}catch(e){$("bm").textContent="That file is not a valid Lift Tracker backup."}};r.readAsText(f)}}
 function render(){
+  saveDraft();
   var T=[["lifts","Lifts"],["plan","Planning"],["nutr","Nutrition"]],SUB={lifts:[["log","Log"],["prog","Progress"]],plan:[["cal","Calendar"],["split","Split"]],nutr:[["wt","Weight"],["kcal","Calorie Tracking"]]};
   $("nav").innerHTML=T.map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-t="'+t[0]+'">'+t[1]+"</button>"}).join("");
   [].forEach.call($("nav").children,function(b){b.onclick=function(){tab=b.dataset.t;render()}});
   var s=sub[tab];({log:vLog,prog:vProg,wt:vWt,cal:vCal,split:vSplit,kcal:vKcal})[s]();
-  if(s==="log"||s==="kcal"){$("v").insertAdjacentHTML("beforeend",backupCard());wireBackup()}
+  if(s==="log"||s==="kcal"){$("v").insertAdjacentHTML("beforeend",'<div class="card" id="sy" style="margin-top:12px"></div>'+backupCard());syncUI();wireBackup()}
   $("v").insertAdjacentHTML("afterbegin",'<div class="seg">'+SUB[tab].map(function(x){return'<button class="'+(s==x[0]?"on":"")+'" data-st="'+x[0]+'">'+x[1]+"</button>"}).join("")+"</div>");
   [].forEach.call($("v").querySelectorAll("[data-st]"),function(b){b.onclick=function(){sub[tab]=b.dataset.st;render()}})}
 /* CALORIES */
@@ -330,4 +369,53 @@ function vSplit(){
         if(ix>=0){var k=ymd(c),lb=plan.days[(Math.floor(i/7)*plan.wd.length+ix)%plan.days.length];S.p[k]=lb;it[k]=lb}}
       S.sp.push({id:Date.now(),name:plan.nm+" · started "+ymd(t),items:it});save();tab="plan";sub.plan="cal";cal=new Date();render()}}}
 init();
+</script>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import{getFirestore,doc,setDoc,onSnapshot}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+const app=initializeApp({apiKey:"AIzaSyB8n0rMbdEAxIdr5PTKcWPtuNR6tTC7Y2I",authDomain:"lifting-8a631.firebaseapp.com",projectId:"lifting-8a631",storageBucket:"lifting-8a631.firebasestorage.app",messagingSenderId:"766532941350",appId:"1:766532941350:web:35b045a8eefc57c8ce98e7"});
+const auth=getAuth(app),db=getFirestore(app),L=window.LTS,LT=window.LT;
+let ref=null,unsub=null,busy=false,again=false;
+const tm=()=>new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+const ERR={"auth/invalid-credential":"Wrong email or password.","auth/wrong-password":"Wrong email or password.","auth/user-not-found":"No account with that email. Tap Create account.","auth/invalid-email":"That email doesn’t look right.","auth/email-already-in-use":"That email already has an account. Tap Sign in.","auth/weak-password":"Use a password with at least 6 characters.","auth/missing-password":"Enter a password.","auth/missing-email":"Enter your email.","auth/network-request-failed":"No connection. Try again when you’re online.","auth/operation-not-allowed":"Email/password sign-in isn’t turned on in Firebase yet.","auth/too-many-requests":"Too many attempts. Wait a few minutes and try again.","permission-denied":"Firebase is blocking access. Check that the Firestore rules were published."};
+const err=e=>ERR[e&&e.code]||("Something went wrong ("+((e&&e.code)||"unknown")+").");
+async function push(){
+  if(!ref||!auth.currentUser)return;
+  if(busy){again=true;return}
+  busy=true;const uid=auth.currentUser.uid;
+  try{
+    do{again=false;const s=LT.get();L.say("Syncing…");await setDoc(ref,{data:JSON.stringify(s),ts:s.ts||0});LT.mark(uid,s.ts||0)}while(again);
+    L.say("Synced "+tm()+".")
+  }catch(e){L.say("Couldn’t sync yet ("+((e&&e.code)||"offline")+"). It will retry on your next change.")}
+  busy=false}
+L.push=push;
+function reconcile(rs,rts){
+  const uid=auth.currentUser.uid,l=LT.get(),lts=l.ts||0,lk=LT.lk(uid);
+  const pk=x=>JSON.stringify([x.w||[],x.p||{},x.sp||[],x.bw||[],x.g||null,x.tpl||[],x.f||[],x.kg||{}]);
+  if(rts===lts&&pk(rs)===pk(l)){LT.mark(uid,rts);L.say("Synced "+tm()+".");return}
+  if(rts===lts){const m=LT.merge(l,rs),ts=Math.max(Date.now(),rts+1);LT.apply(m,ts);push();return}
+  if(lk<0){const m=LT.merge(l,rs),ts=Math.max(Date.now(),rts+1,lts+1);LT.apply(m,ts);push();return}
+  const dirty=lts>lk,moved=rts>lk;
+  if(dirty&&moved){const m=LT.merge(l,rs),ts=Math.max(Date.now(),rts+1,lts+1);LT.apply(m,ts);push()}
+  else if(moved){LT.apply(rs,rts);LT.mark(uid,rts);L.say("Updated from another device "+tm()+".")}
+  else if(dirty){push()}
+  else{LT.mark(uid,Math.max(lk,rts));L.say("Synced "+tm()+".")}}
+function watch(){
+  if(unsub)unsub();
+  unsub=onSnapshot(ref,snap=>{
+    if(snap.metadata.hasPendingWrites)return;
+    if(!snap.exists()){if(!snap.metadata.fromCache)push();return}
+    try{const r=snap.data();reconcile(JSON.parse(r.data),+r.ts||0)}catch(e){L.say("Couldn’t read synced data.")}
+  },e=>L.say(e&&e.code==="permission-denied"?ERR["permission-denied"]:"Live updates paused. Reopen the app to retry."))}
+L.signIn=async(em,pw)=>{try{L.say("Signing in…");await signInWithEmailAndPassword(auth,(em||"").trim(),pw||"")}catch(e){L.say(err(e))}};
+L.signUp=async(em,pw)=>{try{L.say("Creating account…");await createUserWithEmailAndPassword(auth,(em||"").trim(),pw||"")}catch(e){L.say(err(e))}};
+L.signOut=async()=>{try{await signOut(auth)}catch(e){}};
+L.reset=async em=>{if(!(em||"").trim()){L.say("Enter your email first.");return}try{await sendPasswordResetEmail(auth,em.trim());L.say("Password reset email sent. Check your inbox and spam folder.")}catch(e){L.say(err(e))}};
+onAuthStateChanged(auth,u=>{
+  L.ready=true;
+  if(u){L.user=u.email;L.msg="Syncing…";ref=doc(db,"users",u.uid);watch()}
+  else{L.user=null;L.msg="";if(unsub)unsub();unsub=null;ref=null}
+  LT.ui()});
+window.addEventListener("online",()=>{if(ref)push()});
 </script></body></html>
